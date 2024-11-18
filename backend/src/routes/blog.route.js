@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Blog = require('../model/blog.model')
+const Comment = require('../model/comment.model')
 
 //create a blog post
 router.post('/create-post', async (req, res) => {
@@ -65,11 +66,15 @@ router.get('/', async (req, res) => {
 //get blog by id
 router.get('/:id', async (req, res) => {
     try {
-        let postId = req.params.id;
+        const postId = req.params.id;
         const post = await Blog.findById(postId);
         if (!post) {
             return res.status(404).send({ message: "Post not found" })
         }
+
+        //fetch comment related to the post
+        const comments = await Comment.find({ postId }).populate('user', "username email");
+
         res.status(200).send({
             message: "Post fetched successfully",
             post: post
@@ -100,6 +105,57 @@ router.patch('/update-post/:id', async (req, res) => {
     } catch (error) {
         console.error("Error while updating the post:", error);
         res.status(500).send({ message: "Error while updating the post" })
+    }
+})
+
+//delete a blog post
+router.delete('/delete-post/:id', async (req, res) => {
+    try {
+        const postId = req.params.id;
+        const deletedPost = await Blog.findByIdAndDelete(postId);
+        if (!deletedPost) {
+            return res.status(404).send({ message: "Post not found" })
+        }
+        // delete all comments related to the post
+        await Comment.deleteMany({ postId });
+        
+        res.status(200).send({
+            message: "Post deleted successfully",
+            post: deletedPost
+        })
+    } catch (error) {
+        console.error("Error while deleting the post:", error);
+        res.status(500).send({ message: "Error while deleting the post" })
+    }
+})
+
+//related blogs
+router.get('/related/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const blog = await Blog.findById(id);
+        const titeRegex = new RegExp(blog.title.split(' ').join('|'), 'i');
+
+        if (!id) {
+            return res.status(404).send({ message: "Post id is required" });
+        }
+        if (!blog) {
+            return res.status(404).send({ message: "Post is not found" });
+        }
+
+        const relatedQuery = {
+            _id: { $ne: id }, //exclude the current blog by id
+            title: { $regex: titeRegex }
+        };
+
+        const relatedPosts = await Blog.find(relatedQuery).limit(3);
+        res.status(200).send({
+            message: "Related posts fetched successfully",
+            post: relatedPosts
+        })
+    } catch (error) {
+        console.error("Error while finding the related post:", error);
+        res.status(500).send({ message: "Error while finding the related the post" })
     }
 })
 
